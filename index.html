@@ -116,7 +116,10 @@
   // 服务启动时会把下面这行改写成当前隧道地址并推送到 Pages；在隧道上打开时它不生效。
   const TUNNEL = "https://implement-streaming-demands-sunrise.trycloudflare.com";
   if (TUNNEL && /(^|\.)github\.io$/.test(location.hostname)) {
-    location.replace(TUNNEL + location.pathname + location.search + location.hash);
+    // Pages 的路径带仓库名（/music00-ota/），跳转前必须去掉，否则会 404
+    const base = location.pathname.replace(/\/index\.html$/, '').replace(/\/$/, '');
+    const rest = location.pathname.slice(base.length) || '/';
+    location.replace(TUNNEL + (rest.charAt(0) === '/' ? rest : '/' + rest) + location.search + location.hash);
     return;
   }
 
