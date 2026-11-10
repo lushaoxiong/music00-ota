@@ -112,9 +112,10 @@
 
 <script>
 (function () {
-  // ⚠️ 由 udid-server/start.sh 自动写入当前隧道地址，请勿手改
-  const SERVER = "https://stranger-expenditures-park-and.trycloudflare.com";
-  const OTA_URL = 'https://lushaoxiong.github.io/music00-ota';
+  // 整个站点（安装页 / manifest / ipa / API）都由同一个服务提供，地址同源自动派生。
+  // 隧道换域名无需改这里，也无需重新推送任何地方。
+  const SERVER = location.origin;
+  const OTA_URL = location.origin;
   const ITMS = 'itms-services://?action=download-manifest&url=' + encodeURIComponent(OTA_URL + '/manifest.xml');
   const TOKEN_KEY = 'music00_udid_token';
 
