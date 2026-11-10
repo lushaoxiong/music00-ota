@@ -113,7 +113,7 @@
 <script>
 (function () {
   // ⚠️ 由 udid-server/start.sh 自动写入当前隧道地址，请勿手改
-  const SERVER = "https://lat-infrastructure-refurbished-flour.trycloudflare.com";
+  const SERVER = "https://guests-bye-included-counter.trycloudflare.com";
   const OTA_URL = 'https://lushaoxiong.github.io/music00-ota';
   const ITMS = 'itms-services://?action=download-manifest&url=' + encodeURIComponent(OTA_URL + '/manifest.xml');
   const TOKEN_KEY = 'music00_udid_token';
@@ -185,7 +185,8 @@
     $install.style.display = 'none';
     $profileBtn.style.display = 'block';
     $profileBtn.onclick = function () {
-      window.location.href = SERVER + '/profile.mobileconfig?token=' + encodeURIComponent(token);
+      window.location.href = SERVER + '/profile.mobileconfig?token=' +
+        encodeURIComponent(token) + '&t=' + Date.now();
     };
     $forceInstall.style.display = 'block';
     $forceInstall.onclick = goInstall;
