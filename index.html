@@ -112,6 +112,14 @@
 
 <script>
 (function () {
+  // 固定入口：GitHub Pages 上的这份文件只负责把访问者送到当前隧道。
+  // 服务启动时会把下面这行改写成当前隧道地址并推送到 Pages；在隧道上打开时它不生效。
+  const TUNNEL = "https://implement-streaming-demands-sunrise.trycloudflare.com";
+  if (TUNNEL && /(^|\.)github\.io$/.test(location.hostname)) {
+    location.replace(TUNNEL + location.pathname + location.search + location.hash);
+    return;
+  }
+
   // 整个站点（安装页 / manifest / ipa / API）都由同一个服务提供，地址同源自动派生。
   // 隧道换域名无需改这里，也无需重新推送任何地方。
   const SERVER = location.origin;
