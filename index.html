@@ -13,6 +13,7 @@
     --text: #f5f5f7;
     --muted: #8e8e93;
     --line: rgba(255,255,255,.08);
+    --blue: #5a8dff;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   body {
@@ -44,7 +45,8 @@
     font-size: 17px; font-weight: 600; text-align: center; text-decoration: none;
   }
   .install:active { opacity: .8; }
-  .hint { text-align: center; font-size: 12px; color: var(--muted); margin-top: 14px; }
+  .install.ghost { background: transparent; border: 1px solid var(--line); color: var(--text); font-size: 15px; padding: 13px 0; }
+  .hint { text-align: center; font-size: 12px; color: var(--muted); margin-top: 14px; line-height: 1.7; }
   .card {
     background: var(--card); border: 1px solid var(--line); border-radius: 14px;
     padding: 18px; margin-top: 22px; font-size: 13px; line-height: 1.8; color: #c7c7cc;
@@ -55,6 +57,20 @@
   .footer { text-align: center; font-size: 11px; letter-spacing: 2px; color: #48484a; margin-top: 40px; }
   .desktop { display: none; }
   @media (pointer: fine) { .desktop { display: block; } .install { opacity: .5; pointer-events: none; } }
+
+  /* 进度区 */
+  #status { display: none; }
+  #status.on { display: block; }
+  .steps { margin-top: 18px; }
+  .step { display: flex; gap: 10px; align-items: flex-start; padding: 9px 0; font-size: 13px; color: #6b6b70; }
+  .step .ico { width: 18px; flex: none; text-align: center; }
+  .step.active { color: var(--text); }
+  .step.done { color: #7ee29a; }
+  .step .txt { line-height: 1.6; }
+  .step small { display: block; color: var(--muted); font-size: 11.5px; margin-top: 2px; }
+  .pulse { animation: pulse 1.4s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .45 } }
+  .err { color: #ff7e7e; }
 </style>
 </head>
 <body>
@@ -70,15 +86,22 @@
     <div class="meta"><b id="version">v1.1 (4)</b><span class="dot"></span><span id="date">2026-11-06</span></div>
   </div>
 
-  <a class="install" id="install" href="itms-services://?action=download-manifest&url=https://lushaoxiong.github.io/music00-ota/manifest.xml">立即安装</a>
-  <div class="hint">请使用 iPhone 上的 Safari 打开本页</div>
+  <a class="install" id="install">立即安装</a>
+  <div class="hint" id="hint">请使用 iPhone 上的 Safari 打开本页</div>
   <div class="desktop card"><h2>请在手机上操作</h2>用 iPhone 的 Safari 扫描/打开本页地址，再点「立即安装」。桌面浏览器无法触发安装。</div>
 
-  <div class="card">
+  <!-- 注册 / 进度区（点击安装后按设备状态动态展示） -->
+  <div id="status">
+    <div class="steps" id="steps"></div>
+    <a class="install" id="profileBtn" style="display:none">安装描述文件（用于注册本机）</a>
+    <a class="install ghost" id="forceInstall" style="display:none">我已注册过，直接安装</a>
+  </div>
+
+  <div class="card" id="faq">
     <h2>安装不成功？</h2>
     <ol>
       <li>确认点的是 <span class="step-no">Safari</span> 里的「立即安装」，微信等内置浏览器请点右上角用 Safari 打开</li>
-      <li>提示「无法安装」：<span class="step-no">你的设备还没加入开发者名单</span>，把手机 UDID 发给开发者，等重新打包后即可</li>
+      <li>提示「无法安装」：<span class="step-no">你的设备还没加入开发者名单</span>，点「立即安装」按页面引导注册即可，打包完成后页面会自动出现安装按钮</li>
       <li>装上后打不开：去 <span class="step-no">设置 → 通用 → VPN与设备管理</span>，找到开发者 Apple ID，点「信任」</li>
       <li>安装后收不到更新：回到本页再点一次「立即安装」即可覆盖升级</li>
     </ol>
@@ -86,5 +109,175 @@
 
   <div class="footer">ZY MUSIC ENGINE · AD HOC BUILD</div>
 </div>
+
+<script>
+(function () {
+  // ⚠️ 由 udid-server/start.sh 自动写入当前隧道地址，请勿手改
+  const SERVER = "https://abstract-motels-symposium-discrete.trycloudflare.com";
+  const OTA_URL = 'https://lushaoxiong.github.io/music00-ota';
+  const ITMS = 'itms-services://?action=download-manifest&url=' + encodeURIComponent(OTA_URL + '/manifest.xml');
+  const TOKEN_KEY = 'music00_udid_token';
+
+  const $install = document.getElementById('install');
+  const $hint = document.getElementById('hint');
+  const $status = document.getElementById('status');
+  const $steps = document.getElementById('steps');
+  const $profileBtn = document.getElementById('profileBtn');
+  const $forceInstall = document.getElementById('forceInstall');
+  const $faq = document.getElementById('faq');
+
+  let token = localStorage.getItem(TOKEN_KEY);
+  if (!token) {
+    token = Math.random().toString(36).slice(2) + Date.now().toString(36);
+    localStorage.setItem(TOKEN_KEY, token);
+  }
+
+  let pollTimer = null;
+  let mode = 'idle';   // idle | registering | building | ready
+
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+  function api(path) {
+    if (!SERVER) return Promise.reject(new Error('no-server'));
+    return fetch(SERVER + path + '?token=' + encodeURIComponent(token) + '&t=' + Date.now())
+      .then(r => r.json());
+  }
+
+  function goInstall() {
+    // iOS 需要用户手势触发，只能在点击回调里跳 itms-services
+    window.location.href = ITMS;
+  }
+
+  // ---- 状态渲染 ----
+  function renderStep(done, active, text, sub) {
+    const ico = done ? '✅' : (active ? '<span class="pulse">⏳</span>' : '○');
+    const cls = done ? 'step done' : (active ? 'step active' : 'step');
+    return '<div class="' + cls + '"><span class="ico">' + ico + '</span><span class="txt">' +
+      text + (sub ? '<small>' + esc(sub) + '</small>' : '') + '</span></div>';
+  }
+
+  function showSteps(list) {
+    $status.classList.add('on');
+    $steps.innerHTML = list.join('');
+  }
+
+  function setReady() {
+    mode = 'ready';
+    showSteps([
+      renderStep(true, false, '设备已注册'),
+      renderStep(true, false, '安装包已就绪'),
+    ]);
+    $profileBtn.style.display = 'none';
+    $forceInstall.style.display = 'none';
+    $install.textContent = '立即安装 music00';
+    $install.style.display = 'block';
+    $install.onclick = goInstall;
+    $hint.textContent = '点上方按钮，在弹窗中确认安装';
+    stopPoll();
+  }
+
+  function setRegistering(devName) {
+    mode = 'registering';
+    showSteps([
+      renderStep(false, true, '等待获取本机 UDID',
+        '点下方按钮下载描述文件，到 设置 → 通用 → VPN与设备管理 中安装（装完回到本页）'),
+    ]);
+    $install.style.display = 'none';
+    $profileBtn.style.display = 'block';
+    $profileBtn.onclick = function () {
+      window.location.href = SERVER + '/profile.mobileconfig?token=' + encodeURIComponent(token);
+    };
+    $forceInstall.style.display = 'block';
+    $forceInstall.onclick = goInstall;
+    $hint.textContent = '描述文件仅用于读取设备 UDID，装完可随时在设置中删除';
+    startPoll();
+  }
+
+  function setProgress(status, devName) {
+    mode = status;
+    const steps = [];
+    steps.push(renderStep(true, false, '已获取设备 UDID', devName || ''));
+    if (status === 'pending') {
+      steps.push(renderStep(false, true, '等待开发者注册设备',
+        '设备已在队列中，注册完成后自动继续，请保持本页打开'));
+    } else if (status === 'building') {
+      steps.push(renderStep(true, false, '设备已注册'));
+      steps.push(renderStep(false, true, '正在重新打包签名', '约需 2~5 分钟，完成后页面会自动出现安装按钮'));
+    }
+    showSteps(steps);
+    $install.style.display = 'none';
+    $profileBtn.style.display = 'none';
+    $forceInstall.style.display = (status === 'pending') ? 'block' : 'none';
+    $forceInstall.onclick = goInstall;
+    $hint.textContent = '请保持本页面打开，无需刷新';
+    startPoll();
+  }
+
+  function setError(msg) {
+    showSteps([
+      renderStep(false, false, '处理失败'),
+    ]);
+    $steps.innerHTML += '<div class="step err">❌ ' + esc(msg) + '</div>';
+    $profileBtn.style.display = 'block';
+    $profileBtn.textContent = '重新安装描述文件';
+    $profileBtn.onclick = function () {
+      window.location.href = SERVER + '/profile.mobileconfig?token=' + encodeURIComponent(token);
+    };
+    $install.style.display = 'none';
+    stopPoll();
+  }
+
+  // ---- 轮询 ----
+  function startPoll() {
+    if (pollTimer) return;
+    pollTimer = setInterval(pollOnce, 3000);
+    pollOnce();
+  }
+  function stopPoll() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
+
+  function pollOnce() {
+    api('/api/status').then(d => {
+      if (d.status === 'published') setReady();
+      else if (d.status === 'building') setProgress('building', d.name);
+      else if (d.status === 'pending') setProgress('pending', d.name);
+      else if (d.status === 'failed') setError(d.error || '注册失败');
+      else if (d.status === 'waiting' && mode === 'idle') { /* 未注册，等用户点安装 */ }
+      else if (d.status === 'waiting' && mode === 'registering') { /* 继续等 UDID */ }
+    }).catch(() => {
+      // 服务未启动 / 网络失败：保持当前界面
+      if (mode === 'idle') {
+        $hint.textContent = '设备注册服务当前未启动，可先直接尝试安装；若提示无法安装请稍后再试';
+      }
+    });
+  }
+
+  // ---- 点击「立即安装」：先查状态，设备未知则引导注册 ----
+  $install.onclick = function () {
+    if (mode === 'ready') { goInstall(); return; }
+    if (!SERVER) { goInstall(); return; }   // 未配置服务地址时退化为直接安装
+    $install.textContent = '正在检查设备…';
+    api('/api/status').then(d => {
+      if (d.status === 'published') { $install.textContent = '立即安装'; setReady(); goInstall(); }
+      else if (d.status === 'building') setProgress('building', d.name);
+      else if (d.status === 'pending') setProgress('pending', d.name);
+      else if (d.status === 'failed') setError(d.error || '注册失败');
+      else { $install.textContent = '立即安装'; d.name ? setProgress('building', d.name) : setRegistering(); }
+    }).catch(() => {
+      $install.textContent = '立即安装';
+      // 服务不可达：直接尝试安装（老设备可成功）
+      goInstall();
+    });
+  };
+
+  // 页面加载时静默查一次：已注册设备直接显示就绪
+  if (SERVER) {
+    api('/api/status').then(d => {
+      if (d.status === 'published') setReady();
+      else if (d.status === 'building') setProgress('building', d.name);
+      else if (d.status === 'pending') setProgress('pending', d.name);
+    }).catch(() => {});
+  }
+})();
+</script>
 </body>
 </html>
