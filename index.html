@@ -257,6 +257,11 @@
       else if (d.status === 'failed') setError(d.error || '注册失败');
       else if (d.status === 'waiting' && mode === 'idle') { /* 未注册，等用户点安装 */ }
       else if (d.status === 'waiting' && mode === 'registering') { /* 继续等 UDID */ }
+      else if (d.status === 'waiting') {
+        // 记录已被后台删除（或换隧道后 token/IP 不再匹配）：回到注册引导，
+        // 避免界面永远卡在「已获取设备 UDID」
+        setRegistering();
+      }
     }).catch(() => {
       // 服务未启动 / 网络失败：保持当前界面
       if (mode === 'idle') {
