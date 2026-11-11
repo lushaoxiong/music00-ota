@@ -114,12 +114,20 @@
 (function () {
   // 固定入口：GitHub Pages 上的这份文件只负责把访问者送到当前隧道。
   // 服务启动时会把下面这行改写成当前隧道地址并推送到 Pages；在隧道上打开时它不生效。
-  const TUNNEL = "https://connecting-diana-boys-massive.trycloudflare.com";
+  const TUNNEL = "https://mill-verified-long-ensure.trycloudflare.com";
   if (TUNNEL && /(^|\.)github\.io$/.test(location.hostname)) {
     // Pages 的路径带仓库名（/music00-ota/），跳转前必须去掉，否则会 404
     const base = location.pathname.replace(/\/index\.html$/, '').replace(/\/$/, '');
     const rest = location.pathname.slice(base.length) || '/';
-    location.replace(TUNNEL + (rest.charAt(0) === '/' ? rest : '/' + rest) + location.search + location.hash);
+    // 跨域名跳转必须显式带 token：Pages 和隧道的 localStorage 不互通，
+    // 不带的话隧道端会把已注册设备当成新访客
+    let tk = localStorage.getItem('music00_udid_token');
+    if (!tk) {
+      tk = Math.random().toString(36).slice(2) + Date.now().toString(36);
+      localStorage.setItem('music00_udid_token', tk);
+    }
+    const sep = rest.indexOf('?') >= 0 ? '&' : '?';
+    location.replace(TUNNEL + rest + sep + 'token=' + encodeURIComponent(tk) + location.hash);
     return;
   }
 
@@ -138,7 +146,10 @@
   const $forceInstall = document.getElementById('forceInstall');
   const $faq = document.getElementById('faq');
 
-  let token = localStorage.getItem(TOKEN_KEY);
+  // URL 显式携带的 token 优先（来自门牌页跨域名跳转），并持久化到本域
+  const urlToken = (new URLSearchParams(location.search).get('token') || '').slice(0, 64);
+  let token = urlToken || localStorage.getItem(TOKEN_KEY);
+  if (urlToken) localStorage.setItem(TOKEN_KEY, token);
   if (!token) {
     token = Math.random().toString(36).slice(2) + Date.now().toString(36);
     localStorage.setItem(TOKEN_KEY, token);
