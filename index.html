@@ -131,6 +131,13 @@
     return;
   }
 
+  // 安卓设备：iOS 的描述文件注册 / itms-services 安装流程都不适用，
+  // 直接落到 APK 下载页（APK 与 ipa 同样由服务端托管，Pages 上不放 55MB 的安装包）。
+  if (/android/i.test(navigator.userAgent)) {
+    location.replace('apk.html');
+    return;
+  }
+
   // 整个站点（安装页 / manifest / ipa / API）都由同一个服务提供，地址同源自动派生。
   // 隧道换域名无需改这里，也无需重新推送任何地方。
   const SERVER = location.origin;
