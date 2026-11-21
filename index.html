@@ -114,7 +114,7 @@
 (function () {
   // 固定入口：GitHub Pages 上的这份文件只负责把访问者送到当前隧道。
   // 服务启动时会把下面这行改写成当前隧道地址并推送到 Pages；在隧道上打开时它不生效。
-  const TUNNEL = "https://camera-green-scientist-spectacular.trycloudflare.com";
+  const TUNNEL = "https://confidential-termination-locations-evening.trycloudflare.com";
   if (TUNNEL && /(^|\.)github\.io$/.test(location.hostname)) {
     // Pages 的路径带仓库名（/music00-ota/），跳转前必须去掉，否则会 404
     const base = location.pathname.replace(/\/index\.html$/, '').replace(/\/$/, '');
@@ -131,10 +131,16 @@
     return;
   }
 
-  // 安卓设备：iOS 的描述文件注册 / itms-services 安装流程都不适用，
-  // 直接落到 APK 下载页（APK 与 ipa 同样由服务端托管，Pages 上不放 55MB 的安装包）。
-  if (/android/i.test(navigator.userAgent)) {
-    location.replace('apk.html');
+  // 分流：只有 iOS 设备走描述文件 / itms-services 安装流程；
+  // 其余（Android / 鸿蒙 OpenHarmony / 微信钉钉内置浏览器 / 桌面等）一律落到 APK 下载页。
+  // 注意鸿蒙 UA 不含 "android"（形如 "Phone; OpenHarmony 7.0 ... ArkWeb"），
+  // 旧逻辑用 /android/i 判断会误把它当 iOS 走 itms-services → 鸿蒙不支持该协议 → 白屏。
+  var ua = navigator.userAgent || '';
+  var isIOS = /iPad|iPhone|iPod/i.test(ua)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); // iPadOS 桌面模式
+  if (!isIOS) {
+    // 非 iOS：优先跳 Pages 上的 apk.html（服务端隧道偶发不稳，Pages 更可靠）
+    location.replace('https://lushaoxiong.github.io/music00-ota/apk.html');
     return;
   }
 
